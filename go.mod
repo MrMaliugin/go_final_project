@@ -1,4 +1,4 @@
-module example.com/m
+module github.com/MrMaliugin/go_final_project
 
 go 1.22.3
 
