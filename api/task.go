@@ -262,7 +262,8 @@ func TaskDoneHandler(w http.ResponseWriter, r *http.Request) {
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	response, err := json.Marshal(payload)
 	if err != nil {
-		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
+		log.Printf("Ошибка маршалинга JSON: %v", err)
+		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 

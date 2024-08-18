@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sync"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -17,18 +17,16 @@ const (
 
 // Task - структура для хранения информации о задаче
 type Task struct {
-	ID        int64  `json:"id"`
-	Date      string `json:"date"`
-	Title     string `json:"title"`
-	Comment   string `json:"comment"`
-	Repeat    string `json:"repeat"`
-	CreatedAt string `json:"created_at"`
+	ID      int64  `json:"id"`
+	Date    string `json:"date"`
+	Title   string `json:"title"`
+	Comment string `json:"comment"`
+	Repeat  string `json:"repeat"`
 }
 
 // Store - структура для работы с базой данных и выполнения операций над задачами
 type Store struct {
 	db *sql.DB
-	mu sync.Mutex
 }
 
 // NewStore инициализирует базу данных и возвращает новый экземпляр Store
@@ -53,16 +51,13 @@ func (s *Store) Close() error {
 
 // Создание новой задачи
 func (s *Store) CreateTask(task Task) (int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Валидация задачи перед добавлением
 	if err := validateTask(&task); err != nil {
 		return 0, err
 	}
 
-	query := `INSERT INTO scheduler (date, title, comment, repeat, created_at) VALUES (?, ?, ?, ?, ?)`
-	result, err := s.db.Exec(query, task.Date, task.Title, task.Comment, task.Repeat, task.CreatedAt)
+	query := `INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`
+	result, err := s.db.Exec(query, task.Date, task.Title, task.Comment, task.Repeat)
 	if err != nil {
 		log.Println("Ошибка создания задачи:", err)
 		return 0, err
@@ -78,16 +73,13 @@ func (s *Store) CreateTask(task Task) (int64, error) {
 
 // Получение задачи по ID
 func (s *Store) GetTaskByID(id int64) (Task, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `
-        SELECT id, date, title, comment, repeat, created_at
+        SELECT id, date, title, comment, repeat
         FROM scheduler
         WHERE id = ?
     `
 	var task Task
-	err := s.db.QueryRow(query, id).Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat, &task.CreatedAt)
+	err := s.db.QueryRow(query, id).Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
 	if err != nil {
 		log.Println("Ошибка получения задачи по ID:", err)
 		return Task{}, err
@@ -97,11 +89,8 @@ func (s *Store) GetTaskByID(id int64) (Task, error) {
 
 // Функция поиска задач по дате в базе данных
 func (s *Store) GetTasksByDate(date string) ([]Task, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `
-        SELECT id, date, title, comment, repeat, created_at
+        SELECT id, date, title, comment, repeat
         FROM scheduler
         WHERE date = ?
         ORDER BY date ASC
@@ -116,7 +105,7 @@ func (s *Store) GetTasksByDate(date string) ([]Task, error) {
 	var tasks []Task
 	for rows.Next() {
 		var task Task
-		if err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat, &task.CreatedAt); err != nil {
+		if err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat); err != nil {
 			log.Printf("Ошибка сканирования строки задачи: %v", err)
 			return nil, err
 		}
@@ -133,11 +122,8 @@ func (s *Store) GetTasksByDate(date string) ([]Task, error) {
 
 // Получение всех задач с ограничением
 func (s *Store) GetTasks(limit int) ([]Task, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `
-        SELECT id, date, title, comment, repeat, created_at
+        SELECT id, date, title, comment, repeat
         FROM scheduler
         ORDER BY date ASC
         LIMIT ?
@@ -152,7 +138,7 @@ func (s *Store) GetTasks(limit int) ([]Task, error) {
 	tasks := []Task{}
 	for rows.Next() {
 		var task Task
-		err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat, &task.CreatedAt)
+		err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
 		if err != nil {
 			log.Println("Ошибка сканирования строки задачи:", err)
 			return nil, err
@@ -170,12 +156,9 @@ func (s *Store) GetTasks(limit int) ([]Task, error) {
 
 // Поиск задач по ключевым словам
 func (s *Store) SearchTasks(search string) ([]Task, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	searchPattern := "%" + search + "%"
 	query := `
-        SELECT id, date, title, comment, repeat, created_at
+        SELECT id, date, title, comment, repeat
         FROM scheduler
         WHERE title LIKE ? OR comment LIKE ?
         ORDER BY date ASC
@@ -190,7 +173,7 @@ func (s *Store) SearchTasks(search string) ([]Task, error) {
 	tasks := []Task{}
 	for rows.Next() {
 		var task Task
-		err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat, &task.CreatedAt)
+		err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
 		if err != nil {
 			log.Println("Ошибка сканирования строки задачи:", err)
 			return nil, err
@@ -208,9 +191,6 @@ func (s *Store) SearchTasks(search string) ([]Task, error) {
 
 // Обновление задачи по ID
 func (s *Store) UpdateTask(task Task) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `UPDATE scheduler SET title = ?, date = ?, comment = ?, repeat = ? WHERE id = ?`
 	_, err := s.db.Exec(query, task.Title, task.Date, task.Comment, task.Repeat, task.ID)
 	if err != nil {
@@ -224,9 +204,6 @@ func (s *Store) UpdateTask(task Task) error {
 
 // Удаление задачи по ID
 func (s *Store) DeleteTask(id int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `DELETE FROM scheduler WHERE id = ?`
 	_, err := s.db.Exec(query, id)
 	if err != nil {
@@ -239,17 +216,13 @@ func (s *Store) DeleteTask(id int64) error {
 
 // Инициализация базы данных (создание таблиц, если необходимо)
 func (s *Store) initialize() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	query := `
     CREATE TABLE IF NOT EXISTS scheduler (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
         title TEXT NOT NULL,
         comment TEXT,
-        repeat TEXT,
-        created_at TEXT NOT NULL
+        repeat TEXT
     );
     `
 	_, err := s.db.Exec(query)
@@ -263,12 +236,32 @@ func (s *Store) initialize() error {
 }
 
 // Валидация длины полей задачи
+
+func validateDate(dateStr string) error {
+	// Ожидаемый формат даты: YYYYMMDD
+	const dateFormat = "20060102"
+	parsedDate, err := time.Parse(dateFormat, dateStr)
+	if err != nil {
+		return errors.New("некорректный формат даты")
+	}
+
+	// Дополнительная проверка на реальную дату (например, 20240192 — некорректная дата)
+	if parsedDate.Year() < time.Now().Year() {
+		return errors.New("дата не может быть меньше сегодняшней")
+	}
+	return nil
+}
+
 func validateTask(task *Task) error {
 	if len(task.Title) > MaxTitleLength {
 		return errors.New("Заголовок слишком длинный, максимальная длина — 100 символов")
 	}
 	if len(task.Comment) > MaxCommentLength {
 		return errors.New("Комментарий слишком длинный, максимальная длина — 500 символов")
+	}
+	// Валидация даты
+	if err := validateDate(task.Date); err != nil {
+		return err
 	}
 	return nil
 }
